@@ -1,3 +1,4 @@
+var path = require('path')
 var gulp = require('gulp');
 var prefix = require('gulp-autoprefixer');
 var concat = require('gulp-concat');
@@ -6,6 +7,23 @@ var rename = require('gulp-rename');
 var stripDebug = require('gulp-strip-debug');
 var stylus = require('gulp-stylus');
 var nib = require('nib');
+var connect = require('gulp-connect')
+var babel = require('gulp-babel');
+var pump = require('pump');
+var named = require('vinyl-named');
+var webpack = require('webpack-stream');
+const i18n = require('gulp-html-i18n');
+
+
+
+gulp.task('connect', function() {
+  connect.server({
+    root: 'build',
+    index: 'index-en.html',
+    host: "0.0.0.0",
+    livereload: true
+  });
+});
 
 // directories
 var paths = {
@@ -17,17 +35,20 @@ var paths = {
     assets: 'src/assets'
 }
 
-gulp.task('scripts', function() {
-  return gulp.src(paths.js)
-    // Concatenate everything within the JavaScript folder.
-    .pipe(concat('scripts.js'))
-    .pipe(gulp.dest(paths.jsDest))
-    .pipe(rename('scripts.min.js'))
-    // Strip all debugger code out.
-    .pipe(stripDebug())
-    // Minify the JavaScript.
-    .pipe(uglify())
-    .pipe(gulp.dest(paths.jsDest));
+gulp.task('scripts', function(cb) {
+  pump([
+    gulp.src([paths.js]),
+    named(),
+    webpack({
+      output: {
+        filename: '[name].js'
+      }
+    }),
+    babel({ presets: ['env'] }),
+    uglify(),
+    gulp.dest(paths.jsDest),
+    connect.reload()
+  ], cb);
 });
 
 
@@ -35,7 +56,7 @@ gulp.task('scripts', function() {
 // Stylus Tasks
 //////////////////////////////
 gulp.task('styles', function () {
-  gulp.src(paths.styles + '/*.styl')
+  gulp.src(paths.styles + '/main.styl')
     .pipe(stylus({
       paths:  ['node_modules'],
       import: ['nib'],
@@ -57,12 +78,26 @@ gulp.task('html', function () {
         .pipe(gulp.dest('build/'));
 });
 
+gulp.task('build_html', function () {
+  gulp.src('src/**/*.html')
+    .pipe(i18n({
+      langDir: './src/lang',
+      trace: true
+    }))
+    .pipe(gulp.dest('build/'));
+});
+
 //////////////////////////////
 // Copy assets
 //////////////////////////////
 gulp.task('assets', function () {
     gulp.src('src/assets/**/*')
         .pipe(gulp.dest('build/assets'));
+});
+
+gulp.task('favicons', function () {
+  gulp.src('src/favicon/**/*')
+    .pipe(gulp.dest('build/favicon'));
 });
 
 
@@ -75,3 +110,7 @@ gulp.task('watch', function () {
   gulp.watch(paths.html  + '/**/*.html', ['html']);
   gulp.watch(paths.styles + '/**/*.styl', ['styles']);
 });
+
+
+gulp.task('build', ['styles', 'scripts', 'assets', 'build_html', 'favicons']);
+gulp.task('live', ['connect', 'styles', 'scripts', 'assets', 'html', 'favicons', 'build_html' , 'watch']);
